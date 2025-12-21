@@ -1,5 +1,6 @@
 """Simple PDF merger for combining two PDF files."""
 
+import time
 import pypdf
 from pathlib import Path
 import logging
@@ -39,7 +40,7 @@ class PDFMerger:
         self,
         pdf1: str | Path,
         pdf2: str | Path,
-        output_path: str | Path,
+        output_path: Path,
         delete_source: bool = False,
         remove_empty_pages: bool = False,
     ) -> bool:
@@ -58,7 +59,6 @@ class PDFMerger:
         """
         pdf1 = Path(pdf1)
         pdf2 = Path(pdf2)
-        output_path = Path(output_path)
 
         # Validate input files
         if not pdf1.exists():
@@ -97,8 +97,9 @@ class PDFMerger:
             # Create output directory if needed
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
-            merger.write(str(output_path))
+            merger.write(output_path)
             merger.close()
+            time.sleep(1)  # Ensure file system has updated
 
             self.logger.info(f"Successfully created merged PDF: {output_path}")
 

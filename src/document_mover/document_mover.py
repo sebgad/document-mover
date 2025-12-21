@@ -309,6 +309,16 @@ class ScanFileProcessor:
                         )
 
                         if merge_success:
+                            max_retries = 5
+                            retries = 0
+                            while not is_file_stable(merged_filepath, self.stability_wait) and retries < max_retries:
+                                time.sleep(1)
+                                retries += 1
+
+                            if retries == max_retries:
+                                self.logger.error(f"Merged file is not stable after retries: {merged_filename}")
+                                continue
+
                             # Set ownership and permissions for merged file
                             os.chown(merged_filepath, self.user_id, self.group_id)
                             os.chmod(merged_filepath, 0o660)
