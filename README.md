@@ -67,21 +67,25 @@ pdm run process_pdf_merge /path/to/folder --dest-folder /path/to/dest --dry-run 
 
 ### Document Mover
 
-Move processed documents:
+Move processed documents and automatically merge dual-sided PDFs:
 ```bash
-pdm run document-mover /path/to/source --dest /path/to/dest
+pdm run document-mover --source-dir /path/to/source --dest-dir /path/to/dest
 ```
 
 With options:
 ```bash
-pdm run document-mover /path/to/source --dest /path/to/dest --dual-dest /path/to/dual-dest --stability-wait 5 --min-age 30 --verbose
+pdm run document-mover --source-dir /path/to/source --dest-dir /path/to/dest --dual-side-prefix "dual-side" --stability-wait 5 --max-age 30 --verbose
 ```
 
 **Options:**
-- `--dest`: Destination folder for regular files (required)
-- `--dual-dest`: Destination folder for dual-sided files
-- `--stability-wait`: Seconds to wait before checking file stability (default: 2)
-- `--min-age`: Minimum file age in seconds before processing (default: 60)
+- `--source-dir`: Source directory containing files to process (required)
+- `--dest-dir`: Destination directory for processed files (required)
+- `--dual-side-prefix`: Prefix for identifying dual-sided files (default: "double-sided")
+- `--user-id`: User ID for file ownership (default: current user)
+- `--group-id`: Group ID for file ownership (default: current group)
+- `--stability-wait`: Seconds to wait before checking file stability (default: 10)
+- `--max-age`: Maximum file age in minutes before forcing move (default: 10)
+- `--dry-run`: Preview operations without moving files
 - `--verbose`: Enable verbose logging
 
 ## Configuration
@@ -115,10 +119,12 @@ document-mover/
 
 ## Requirements
 
-- Python 3.13+
+- Python 3.12+
 - pypdf >= 6.4.1
 - ruff >= 0.14.8
 - mypy >= 1.19.0
+- pytest >= 9.0.2
+- pytest-cov >= 7.0.0
 
 ## Development
 

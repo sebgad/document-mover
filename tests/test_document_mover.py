@@ -356,3 +356,36 @@ class TestErrorHandling:
 
         assert result is False
         assert sample_pdf_file.exists()
+
+    def test_single_dual_sided_file_not_merged(self, source_dir, dest_dir, processor):
+        """Test that a single dual-sided file is not merged (waiting for pair)."""
+        # Create only one dual-sided PDF
+        pdf_path = source_dir / "double-sided_1.pdf"
+        writer = PdfWriter()
+        writer.add_blank_page(width=200, height=200)
+        with open(pdf_path, "wb") as f:
+            writer.write(f)
+
+        result = processor.run()
+
+        # Single file should not be merged, should remain in source
+        assert pdf_path.exists()
+        assert len(list(dest_dir.glob("*"))) == 0  # No files in destination
+
+    def test_odd_number_dual_sided_files(self, source_dir, dest_dir, processor):
+        """Test that odd number of dual-sided files leaves last one unmerged."""
+        # Create 3 dual-sided PDFs (odd number)
+        for i in range(1, 4):
+            pdf_path = source_dir / f"double-sided_{i}.pdf"
+            writer = PdfWriter()
+            writer.add_blank_page(width=200, height=200)
+            with open(pdf_path, "wb") as f:
+                writer.write(f)
+
+        result = processor.run()
+
+        # First pair (1,2) should be merged, file 3 should remain
+        assert (source_dir / "double-sided_3.pdf").exists()
+        # Should have one merged file
+        merged_files = list(dest_dir.glob("double-sided_*_merged.pdf"))
+        assert len(merged_files) >= 1

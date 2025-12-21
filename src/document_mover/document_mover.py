@@ -24,9 +24,11 @@ class FileStats(TypedDict):
 
 # Default Configuration
 DEFAULT_DUAL_SIDE_PREFIX = "double-sided"
-DEFAULT_STABILITY_WAIT = 5  # seconds
+DEFAULT_STABILITY_WAIT = 10  # seconds
 DEFAULT_MAX_AGE = 10  # minutes
 DEFAULT_LOCK_FILE = "/var/run/move-pdfs.lock"
+DEFAULT_USER_ID = os.getuid()  # Current user ID
+DEFAULT_GROUP_ID = os.getgid()  # Current group ID
 DEFAULT_FILE_TYPES = [
     ".pdf",
     ".jpg",
@@ -124,7 +126,7 @@ class ScanFileProcessor:
             if filepath.exists():
                 new_size = filepath.stat().st_size
                 stats["final_size"] = new_size
-                stats["is_stable"] = stats["initial_size"] == new_size
+                stats["is_stable"] = stats["initial_size"] == new_size and stats["initial_size"] > 0
                 if not stats["is_stable"]:
                     self.logger.debug(
                         f"File unstable: {filename} (size changed: {stats['initial_size']} -> {new_size})"
@@ -269,6 +271,12 @@ class ScanFileProcessor:
         # sort dual-side files by name to ensure correct processing order
         dual_side_files.sort(key=lambda x: x["path"].name)
 
+        if len(dual_side_files) <= 1:
+            self.logger.info(
+                f"Only one or less dual-side file found ({dual_side_files[0]['path'].name}), cannot perform merge"
+            )
+            return success_count
+
         # find files with consecutive numbering
         for i in range(0, len(dual_side_files) - 1, 2):
             # Process file1 and file2 as a pair
@@ -367,14 +375,14 @@ def parse_arguments():
     parser.add_argument(
         "--user-id",
         type=int,
-        required=True,
+        default=DEFAULT_USER_ID,
         help="User ID for file ownership",
     )
 
     parser.add_argument(
         "--group-id",
         type=int,
-        required=True,
+        default=DEFAULT_GROUP_ID,
         help="Group ID for file ownership",
     )
 
