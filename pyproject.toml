@@ -1,7 +1,7 @@
 [project]
 name = "document-mover"
-version = "0.1.0"
-description = "Default template for PDM package"
+version = "0.3.0"
+description = "document mover, for moving scans stable and merge pdfs"
 authors = [
     {name = "sebgad", email = "sebgad@sebgad.com"},
 ]
@@ -34,9 +34,6 @@ build-backend = "pdm.backend"
 
 [tool.pdm]
 distribution = true
-
-[tool.pdm.build]
-includes = ["src/document_mover/py.typed"]
 
 [tool.ruff]
 line-length = 120
