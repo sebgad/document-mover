@@ -1,0 +1,29 @@
+[project]
+name = "document-mover"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "sebgad", email = "-"},
+]
+dependencies = [
+    "ruff>=0.14.8",
+    "pypdf>=6.4.1",
+    "mypy>=1.19.0",
+]
+requires-python = ">=3.13"
+readme = "README.md"
+license = {text = "MIT"}
+
+[project.scripts]
+pdf-merger = "document_mover.pdf_merger:main"
+document-mover = "document_mover.document_mover:main"
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm]
+distribution = true
+
+[tool.ruff]
+line-length = 120
