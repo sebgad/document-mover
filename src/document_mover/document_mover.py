@@ -286,7 +286,7 @@ class ScanFileProcessor:
             file1_number = re.findall(r"\d+", file1["path"].name)[0]
             file2_number = re.findall(r"\d+", file2["path"].name)[0]
 
-            if int(file1_number) == int(file2_number) - 1:
+            if int(file1_number) < int(file2_number):
                 # Merge PDF of file1 and file2
                 merged_filename = f"{self.dual_side_prefix}_{file1_number}_{file2_number}_merged.pdf"
                 merged_filepath = self.dest_dir / merged_filename
