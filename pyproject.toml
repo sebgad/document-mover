@@ -25,8 +25,8 @@ classifiers = [
 ]
 
 [project.scripts]
-pdf-merger = "document_mover.pdf_merger:main"
-document-mover = "document_mover.document_mover:main"
+pdf-merger = "document_mover:pdf_merger_main"
+document-mover = "document_mover:document_mover_main"
 
 [build-system]
 requires = ["pdm-backend"]
