@@ -1,7 +1,7 @@
 """Simple PDF merger for combining two PDF files."""
 
-import time
 import pypdf
+from pypdf.generic import ContentStream
 from pathlib import Path
 import logging
 import argparse
@@ -9,6 +9,22 @@ import sys
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+
+DRAWING_OPS = {
+    b"Do",  # image or XObject
+    b"Tj",
+    b"TJ",  # text
+    b"Tf",  # font selection (text intent)
+    b"re",  # rectangle
+    b"m",
+    b"l",
+    b"c",  # path drawing
+    b"S",
+    b"s",
+    b"f",
+    b"F",
+    b"f*",  # stroke/fill
+}
 
 
 class PDFMerger:
@@ -18,23 +34,42 @@ class PDFMerger:
         """Initialize the PDF merger."""
         self.logger = logging.getLogger(__name__)
 
-    @staticmethod
-    def is_page_empty(page) -> bool:
-        """
-        Check if a PDF page is empty or contains only whitespace.
-
-        Args:
-            page: A PDF page object.
-
-        Returns:
-            True if page is empty or contains only whitespace, False otherwise.
-        """
+    def check_document_has_blank_pages(self, pdf_path: Path) -> bool:
+        """Check if the PDF document has any blank pages."""
         try:
-            text = page.extract_text().strip()
-            return len(text) == 0
-        except Exception:
-            # If we can't extract text, assume page has content
+            with open(pdf_path, "rb") as f:
+                reader = pypdf.PdfReader(f)
+                for page in reader.pages:
+                    if self.is_blank_page(page):
+                        return True
             return False
+        except Exception as e:
+            self.logger.error(f"Error checking blank pages in {pdf_path}: {e}")
+            return False
+
+    @staticmethod
+    def is_blank_page(page: pypdf.PageObject):
+        # 1. No content stream
+        if page.get_contents() is None:
+            return True
+
+        # 2. No extractable text
+        if page.extract_text() and page.extract_text().strip():
+            return False
+
+        # 3. Look for images
+        resources = page.get("/Resources", {})
+        xobjects = resources.get("/XObject", {})
+        if xobjects:
+            return False
+
+        # 4. Look for drawing operators
+        content = ContentStream(page.get_contents(), page.pdf)
+        for _, operator in content.operations:
+            if operator in DRAWING_OPS:
+                return False
+
+        return True
 
     def merge(
         self,
@@ -84,12 +119,12 @@ class PDFMerger:
                 max_pages = max(len(pages1), len(pages2))
                 for i in range(max_pages):
                     if i < len(pages1):
-                        if remove_empty_pages and self.is_page_empty(pages1[i]):
+                        if remove_empty_pages and self.is_blank_page(pages1[i]):
                             self.logger.debug(f"Skipping empty page from {pdf1.name} at index {i}")
                         else:
                             merger.add_page(pages1[i])
                     if i < len(pages2):
-                        if remove_empty_pages and self.is_page_empty(pages2[i]):
+                        if remove_empty_pages and self.is_blank_page(pages2[i]):
                             self.logger.debug(f"Skipping empty page from {pdf2.name} at index {i}")
                         else:
                             merger.add_page(pages2[i])
@@ -99,7 +134,6 @@ class PDFMerger:
 
             merger.write(output_path)
             merger.close()
-            time.sleep(1)  # Ensure file system has updated
 
             self.logger.info(f"Successfully created merged PDF: {output_path}")
 

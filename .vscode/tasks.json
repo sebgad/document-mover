@@ -21,6 +21,6 @@
 			"command": "pdm run pytest tests/ --cov=src/document_mover --cov-report=html --cov-report=term-missing -v",
 			"problemMatcher": [],
 			"group": "test"
-		}
+		},
 	]
 }
