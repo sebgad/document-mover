@@ -3,16 +3,26 @@ name = "document-mover"
 version = "0.1.0"
 description = "Default template for PDM package"
 authors = [
-    {name = "sebgad", email = "-"},
+    {name = "sebgad", email = "sebgad@sebgad.com"},
 ]
 dependencies = [
     "ruff>=0.14.8",
     "pypdf>=6.4.1",
     "mypy>=1.19.0",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
 
 [project.scripts]
 pdf-merger = "document_mover.pdf_merger:main"
@@ -24,6 +34,9 @@ build-backend = "pdm.backend"
 
 [tool.pdm]
 distribution = true
+
+[tool.pdm.build]
+includes = ["src/document_mover/py.typed"]
 
 [tool.ruff]
 line-length = 120

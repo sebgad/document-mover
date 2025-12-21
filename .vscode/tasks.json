@@ -1,0 +1,26 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run all tests",
+			"type": "shell",
+			"command": "pdm run pytest tests/ -v",
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Run tests with coverage",
+			"type": "shell",
+			"command": "pdm run pytest tests/ --cov=src/document_mover --cov-report=html --cov-report=term-missing -v",
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Run tests with coverage",
+			"type": "shell",
+			"command": "pdm run pytest tests/ --cov=src/document_mover --cov-report=html --cov-report=term-missing -v",
+			"problemMatcher": [],
+			"group": "test"
+		}
+	]
+}

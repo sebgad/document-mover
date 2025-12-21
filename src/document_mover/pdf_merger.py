@@ -84,27 +84,15 @@ class PDFMerger:
                 max_pages = max(len(pages1), len(pages2))
                 for i in range(max_pages):
                     if i < len(pages1):
-                        merger.add_page(pages1[i])
+                        if remove_empty_pages and self.is_page_empty(pages1[i]):
+                            self.logger.debug(f"Skipping empty page from {pdf1.name} at index {i}")
+                        else:
+                            merger.add_page(pages1[i])
                     if i < len(pages2):
-                        merger.add_page(pages2[i])
-
-            # Remove empty pages if requested
-            if remove_empty_pages:
-                self.logger.info("Removing empty pages...")
-                initial_page_count = len(merger.pages)
-
-                # Iterate backwards to safely remove pages
-                for i in range(len(merger.pages) - 1, -1, -1):
-                    if self.is_page_empty(merger.pages[i]):
-                        self.logger.debug(f"Removing empty page at index {i}")
-                        merger.pages.pop(i)
-
-                removed_count = initial_page_count - len(merger.pages)
-                if removed_count > 0:
-                    self.logger.info(
-                        f"Removed {removed_count} empty page(s). "
-                        f"Total pages: {initial_page_count} -> {len(merger.pages)}"
-                    )
+                        if remove_empty_pages and self.is_page_empty(pages2[i]):
+                            self.logger.debug(f"Skipping empty page from {pdf2.name} at index {i}")
+                        else:
+                            merger.add_page(pages2[i])
 
             # Create output directory if needed
             output_path.parent.mkdir(parents=True, exist_ok=True)

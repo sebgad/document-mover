@@ -1,0 +1,17 @@
+{
+    "jinja": true,
+    "justMyCode": true,
+    "configurations": [
+        {
+            "name": "Python: Pytest",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/test_pdf_merger.py::TestPDFMerger::test_merge_with_remove_empty_pages",
+                "-v",
+                "-s"
+            ],
+        }
+    ]
+}
