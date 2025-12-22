@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 
+import time
 import os
 import re
-import time
 import shutil
-from typing import TypedDict
-
+from .file_list import FileStats, FileListHandler
 import argparse
 from pathlib import Path
 import logging
@@ -14,15 +13,9 @@ from document_mover.pdf_merger import PDFMerger
 from .file_lock import FileLock
 
 
-class FileStats(TypedDict):
-    path: Path
-    initial_size: int
-    age: float
-    final_size: int
-    is_stable: bool
-
-
 # Default Configuration
+DEFAULT_SINGLE_DUAL_SIDE_PREFIX = "single-double-sided"
+DEFAULT_DUAL_SIDE_STABILITY_WAIT = 30  # seconds
 DEFAULT_DUAL_SIDE_PREFIX = "double-sided"
 DEFAULT_STABILITY_WAIT = 10  # seconds
 DEFAULT_MAX_AGE = 10  # minutes
@@ -53,10 +46,12 @@ class ScanFileProcessor:
         self,
         source_dir: str,
         dest_dir: str,
-        dual_side_prefix: str,
+        dual_side_prefix: str | None,
+        single_dual_side_prefix: str | None,
         user_id: int,
         group_id: int,
         stability_wait: int,
+        stability_wait_single_dual_side: int,
         max_age: int,
         file_types: list,
         dry_run: bool = False,
@@ -67,7 +62,7 @@ class ScanFileProcessor:
         Args:
             source_dir: Source directory containing scanned files
             dest_dir: Default destination directory for processed files
-            dual_side_prefix: Prefix for identifying dual-sided files
+            dual_side_prefix: Prefix or regex pattern for identifying dual-sided files
             user_id: User ID for file ownership
             group_id: Group ID for file ownership
             stability_wait: Wait time in seconds to check file stability
@@ -79,61 +74,16 @@ class ScanFileProcessor:
         self.logger = logging.getLogger(__name__)
         self.source_dir = Path(source_dir)
         self.dest_dir = Path(dest_dir)
-        self.dual_side_prefix = dual_side_prefix
+        self.stability_wait_single_dual_side = stability_wait_single_dual_side
+        self.single_dual_side_prefix_pattern = single_dual_side_prefix
+        self.dual_side_prefix_pattern = dual_side_prefix
         self.user_id = user_id
         self.group_id = group_id
         self.stability_wait = stability_wait
         self.max_age_seconds = max_age * 60
         self.file_types = [ext.lower() if ext.startswith(".") else f".{ext.lower()}" for ext in file_types]
         self.dry_run = dry_run
-        self.file_stats: dict[str, FileStats] = {}  # Dictionary to store file statistics
-
-    @staticmethod
-    def get_file_age(filepath: Path) -> float:
-        """Get file age in seconds."""
-        try:
-            return time.time() - filepath.stat().st_mtime
-        except FileNotFoundError:
-            return 0
-
-    def collect_file_stats(self, files: list[Path]) -> None:
-        """
-        Collect initial statistics for all files.
-
-        Args:
-            files: List of file paths to collect stats for
-        """
-        self.logger.info(f"Collecting initial file statistics for {len(files)} file(s)...")
-        for filepath in files:
-            if filepath.exists():
-                self.file_stats[filepath.name] = {
-                    "path": filepath,
-                    "initial_size": filepath.stat().st_size,
-                    "age": self.get_file_age(filepath),
-                    "final_size": 0,
-                    "is_stable": False,
-                }
-
-    def check_file_stability(self) -> None:
-        """
-        Check stability for all files by comparing sizes after wait time.
-        """
-        self.logger.info(f"Waiting {self.stability_wait} seconds to check file stability...")
-        time.sleep(self.stability_wait)
-
-        for filename, stats in self.file_stats.items():
-            filepath = stats["path"]
-            if filepath.exists():
-                new_size = filepath.stat().st_size
-                stats["final_size"] = new_size
-                stats["is_stable"] = stats["initial_size"] == new_size and stats["initial_size"] > 0
-                if not stats["is_stable"]:
-                    self.logger.debug(
-                        f"File unstable: {filename} (size changed: {stats['initial_size']} -> {new_size})"
-                    )
-            else:
-                stats["is_stable"] = False
-                self.logger.debug(f"File disappeared: {filename}")
+        self.file_list = FileListHandler(self.source_dir, self.file_types)
 
     def move_file(self, file_stat: FileStats) -> bool:
         """
@@ -145,31 +95,12 @@ class ScanFileProcessor:
         Returns:
             True if file was processed successfully, False otherwise
         """
-        filename = file_stat["path"].name
+        filename = file_stat.path.name
 
         try:
             # Check if file still exists
-            if not file_stat["path"].exists():
+            if not file_stat.path.exists():
                 self.logger.debug(f"File no longer exists: {filename}")
-                return False
-
-            # Get stats from dictionary
-            stats = self.file_stats.get(filename)
-            assert stats is not None, "File stats should have been collected"
-
-            file_age = file_stat["age"]
-
-            # Check if file is too old (might be stuck)
-            if file_age > self.max_age_seconds:
-                self.logger.warning(f"File {filename} is older than {self.max_age_seconds / 60} minutes, moving anyway")
-
-            elif not file_stat.get("is_stable", False):
-                self.logger.info(f"Skipping unstable file: {filename}")
-                return False
-
-            # Double-check file still exists before moving
-            if not file_stat["path"].exists():
-                self.logger.debug(f"File disappeared before move: {filename}")
                 return False
 
             # Determine destination path
@@ -181,20 +112,20 @@ class ScanFileProcessor:
                 # Remove source file if it's identical
                 if not self.dry_run:
                     try:
-                        file_stat["path"].unlink()
+                        file_stat.path.unlink()
                         self.logger.info(f"Removed duplicate source file: {filename}")
                     except Exception:
                         pass
                 return False
 
             if self.dry_run:
-                self.logger.info(f"[DRY-RUN] Would move file: {file_stat['path']} -> {dest_path}")
+                self.logger.info(f"[DRY-RUN] Would move file: {file_stat.path} -> {dest_path}")
                 self.logger.info(
                     f"[DRY-RUN] Would set ownership to {self.user_id}:{self.group_id} and permissions to 0660"
                 )
                 return True
 
-            shutil.move(str(file_stat["path"]), str(dest_path))
+            shutil.move(str(file_stat.path), str(dest_path))
 
             # Change ownership and permissions
             os.chown(dest_path, self.user_id, self.group_id)
@@ -213,9 +144,124 @@ class ScanFileProcessor:
             self.logger.error(f"Error processing file {filename}: {e}")
             return False
 
-    def get_files_to_process(self) -> list[Path]:
-        """Get list of files matching the specified file types."""
-        return [f for f in self.source_dir.iterdir() if f.is_file() and f.suffix.lower() in self.file_types]
+    def merge_pdf_files(
+        self, pdf1: Path, pdf2: Path, output_path: Path, delete_source: bool = False, remove_empty_pages: bool = False
+    ) -> bool:
+        """
+        Merge two PDF files into one.
+
+        Args:
+            pdf1: Path to the first PDF file
+            pdf2: Path to the second PDF file
+            output_path: Path to save the merged PDF file
+            delete_source: If True, delete source files after merging
+            remove_empty_pages: If True, remove empty pages from the merged PDF
+
+        Returns:
+            True if merge was successful, False otherwise
+        """
+        if self.dry_run:
+            self.logger.info(f"[DRY-RUN] Would merge: {pdf1.name} + {pdf2.name} -> {output_path.name}")
+
+            if delete_source:
+                self.logger.info(f"[DRY-RUN] Would delete source files: {pdf1.name}, {pdf2.name}")
+            return True
+
+        try:
+            pdf_merger = PDFMerger()
+            merge_success = pdf_merger.merge(
+                pdf1=pdf1,
+                pdf2=pdf2,
+                output_path=output_path,
+                delete_source=delete_source,
+                remove_empty_pages=remove_empty_pages,
+            )
+
+            if not merge_success:
+                self.logger.error(f"Failed to merge PDF files: {pdf1} + {pdf2}")
+                return False
+
+            time.sleep(1)
+
+            # Set ownership and permissions for merged file
+            os.chown(output_path, self.user_id, self.group_id)
+            os.chmod(output_path, 0o660)
+
+            self.logger.info(f"Successfully merged dual-side files into: {output_path}")
+
+        except Exception as e:
+            self.logger.error(f"Error merging PDF files {pdf1} + {pdf2}: {e}")
+            return False
+
+        return True
+
+    def handle_dual_side_files(
+        self, files: list[FileStats], consecutive_pairwise: bool = False, outside_pairing: bool = False
+    ) -> int:
+        """
+        Handle merging of dual-sided PDF files.
+
+        Collects stable dual-sided files, pairs them by consecutive numbering,
+        and merges each pair into a single PDF file.
+
+        Returns:
+            int: Number of successfully merged file pairs
+        """
+        # Consistency check for pairwise parameters
+        if consecutive_pairwise and outside_pairing:
+            self.logger.error("Cannot have both consecutive_pairwise and outside_pairing set to True.")
+            return 0
+
+        success_count = 0
+        if len(files) % 2 != 0:
+            self.logger.error(f"Odd number of dual-side files detected ({len(files)}), cannot perform merge")
+            return success_count
+
+        if consecutive_pairwise:
+            file_range = [(i, i + 1) for i in range(0, len(files) - 1, 2)]
+        elif outside_pairing:
+            file_range = [(i, len(files) - 1 - i) for i in range(len(files) // 2)]
+        else:
+            self.logger.error("Either consecutive_pairwise or outside_pairing must be True.")
+            return success_count
+
+        for i, j in file_range:
+            # Process file1 and file2 as a pair
+            file1 = files[i]
+            file2 = files[j]
+
+            file1_match = re.search(r"\d+", file1.path.name)
+            file2_match = re.search(r"\d+", file2.path.name)
+
+            if not file1_match or not file2_match:
+                self.logger.warning(f"Could not extract numbers from {file1.path.name} or {file2.path.name}")
+                continue
+
+            file1_number = int(file1_match.group(0))
+            file2_number = int(file2_match.group(0))
+
+            if file1_number < file2_number:
+                # Merge PDF of file1 and file2
+                merged_filename = f"dual-side_{file1_number}_{file2_number}_merged.pdf"
+                merged_filepath = self.dest_dir / merged_filename
+
+                if self.dry_run:
+                    self.logger.info(
+                        f"[DRY-RUN] Would merge dual-side files: {file1.path.name} + {file2.path.name} -> {merged_filename}"
+                    )
+                    success_count += 1
+                    continue
+                else:
+                    if self.merge_pdf_files(
+                        pdf1=file1.path,
+                        pdf2=file2.path,
+                        output_path=merged_filepath,
+                        delete_source=True,
+                        remove_empty_pages=True,
+                    ):
+                        success_count += 1
+
+        return success_count
 
     def run(self) -> int:
         """
@@ -239,122 +285,50 @@ class ScanFileProcessor:
         self.logger.info(f"Processing file types: {', '.join(self.file_types)}")
         self.logger.info(f"Default destination: {self.dest_dir}")
 
-        # Get all files to process
-        files = self.get_files_to_process()
+        self.file_list.parse_files(self.stability_wait, only_stable_files=False)
 
-        if not files:
+        if not self.file_list.get_number_of_files():
             self.logger.info("No files to process")
             return 0
 
-        self.logger.info(f"Found {len(files)} file(s) to process")
+        self.logger.info(f"Found {self.file_list.get_number_of_files()} file(s) to process")
 
-        # Collect initial statistics for all files
-        self.collect_file_stats(files)
-        self.check_file_stability()
+        # Check if prefix given for dual-side files
+        if self.dual_side_prefix_pattern is not None:
+            self.file_list.add_tag_to_files(self.dual_side_prefix_pattern, "dual-side")
+
+        if self.single_dual_side_prefix_pattern is not None:
+            self.file_list.add_tag_to_files(self.single_dual_side_prefix_pattern, "single-dual-side")
 
         success_count = 0
-        dual_side_files: list[FileStats] = []
 
-        for filestat in self.file_stats.values():
-            if filestat["is_stable"]:
-                filepath = filestat["path"]
-                is_dual_side = filepath.name.startswith(self.dual_side_prefix)
+        # handle files with no tag first -> normal files
+        for file in self.file_list.get_untagged_files():
+            if self.move_file(file):
+                success_count += 1
 
-                if not is_dual_side and self.move_file(filestat):
-                    success_count += 1
+        if self.file_list.is_directory_stable(self.stability_wait_single_dual_side):
+            self.logger.info("Source directory is stable for single dual-side files.")
 
-                elif is_dual_side:
-                    # if dual-side, only pdf files are supported for merging
-                    if filepath.suffix.lower() == ".pdf":
-                        dual_side_files.append(filestat)
+            file_list_single_dual = self.file_list.get_files_with_tag("single-dual-side", file_types=[".pdf"])
+            file_list_dual = self.file_list.get_files_with_tag("dual-side", file_types=[".pdf"])
 
-        # sort dual-side files by name to ensure correct processing order
-        dual_side_files.sort(key=lambda x: x["path"].name)
+            if file_list_single_dual:
+                self.logger.info(
+                    f"Processing {len(file_list_single_dual)} single dual-side tagged file(s) for pairing and merging."
+                )
+                success_count += self.handle_dual_side_files(files=file_list_single_dual, outside_pairing=True)
 
-        if len(dual_side_files) <= 1:
-            self.logger.info(
-                f"Only one or less dual-side file found ({dual_side_files[0]['path'].name}), cannot perform merge"
-            )
+            if file_list_dual:
+                self.logger.info(
+                    f"Processing {len(file_list_dual)} dual-side tagged file(s) for consecutive pairing and merging."
+                )
+                success_count += self.handle_dual_side_files(files=file_list_dual, consecutive_pairwise=True)
+        else:
+            self.logger.info("Source directory is not stable for single dual-side files, skipping processing.")
             return success_count
 
-        # find files with consecutive numbering
-        for i in range(0, len(dual_side_files) - 1, 2):
-            # Process file1 and file2 as a pair
-            file1 = dual_side_files[i]
-            file2 = dual_side_files[i + 1]
-
-            file1_number = re.findall(r"\d+", file1["path"].name)[0]
-            file2_number = re.findall(r"\d+", file2["path"].name)[0]
-
-            if int(file1_number) < int(file2_number):
-                # Merge PDF of file1 and file2
-                merged_filename = f"{self.dual_side_prefix}_{file1_number}_{file2_number}_merged.pdf"
-                merged_filepath = self.dest_dir / merged_filename
-
-                if self.dry_run:
-                    self.logger.info(
-                        f"[DRY-RUN] Would merge dual-side files: {file1['path'].name} + {file2['path'].name} -> {merged_filename}"
-                    )
-                    success_count += 1
-                    continue
-                else:
-                    try:
-                        pdf_merger = PDFMerger()
-                        merge_success = pdf_merger.merge(
-                            pdf1=file1["path"],
-                            pdf2=file2["path"],
-                            output_path=merged_filepath,
-                            delete_source=True,
-                            remove_empty_pages=True,
-                        )
-
-                        if merge_success:
-                            max_retries = 5
-                            retries = 0
-                            while not is_file_stable(merged_filepath, self.stability_wait) and retries < max_retries:
-                                time.sleep(1)
-                                retries += 1
-
-                            if retries == max_retries:
-                                self.logger.error(f"Merged file is not stable after retries: {merged_filename}")
-                                continue
-
-                            # Set ownership and permissions for merged file
-                            os.chown(merged_filepath, self.user_id, self.group_id)
-                            os.chmod(merged_filepath, 0o660)
-
-                            self.logger.info(f"Successfully merged dual-side files into: {merged_filename}")
-                            success_count += 1
-                        else:
-                            self.logger.error(
-                                f"Failed to merge dual-side files: {file1['path'].name} + {file2['path'].name}"
-                            )
-
-                    except Exception as e:
-                        self.logger.error(
-                            f"Error merging dual-side files {file1['path'].name} + {file2['path'].name}: {e}"
-                        )
-
         return success_count
-
-
-def is_file_stable(filepath: Path, stability_wait_seconds: int) -> bool:
-    """Check if file is stable (not being written to)."""
-    try:
-        size1 = filepath.stat().st_size
-        time.sleep(stability_wait_seconds)
-        size2 = filepath.stat().st_size
-        return size1 == size2
-    except FileNotFoundError:
-        return False
-
-
-def get_file_age(filepath: Path) -> float:
-    """Get file age in seconds."""
-    try:
-        return time.time() - filepath.stat().st_mtime
-    except FileNotFoundError:
-        return 0
 
 
 def parse_arguments():
@@ -379,7 +353,13 @@ def parse_arguments():
     parser.add_argument(
         "--dual-side-prefix",
         default=DEFAULT_DUAL_SIDE_PREFIX,
-        help="Prefix for identifying dual-sided files",
+        help="Regex pattern for identifying dual-sided files (default: 'double-sided')",
+    )
+
+    parser.add_argument(
+        "--single-dual-side-prefix",
+        default=DEFAULT_SINGLE_DUAL_SIDE_PREFIX,
+        help="Regex pattern for identifying single-dual-sided files (default: 'single-double-sided')",
     )
 
     parser.add_argument(
@@ -408,6 +388,13 @@ def parse_arguments():
         type=int,
         default=DEFAULT_MAX_AGE,
         help="Maximum file age in minutes before forcing move",
+    )
+
+    parser.add_argument(
+        "--dual-side-stability-wait",
+        type=int,
+        default=DEFAULT_DUAL_SIDE_STABILITY_WAIT,
+        help="Wait time in seconds to check dual-side file stability",
     )
 
     parser.add_argument(
@@ -447,6 +434,8 @@ def main():
         source_dir=args.source_dir,
         dest_dir=args.dest_dir,
         dual_side_prefix=args.dual_side_prefix,
+        single_dual_side_prefix=args.single_dual_side_prefix,
+        stability_wait_single_dual_side=args.dual_side_stability_wait,
         max_age=args.max_age,
         user_id=args.user_id,
         group_id=args.group_id,
@@ -456,7 +445,9 @@ def main():
     )
 
     # Run the processor
-    processor.run()
+    processed_files = processor.run()
+
+    logging.getLogger().info(f"Total files processed successfully: {processed_files}")
 
 
 if __name__ == "__main__":
