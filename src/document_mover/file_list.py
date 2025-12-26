@@ -203,7 +203,13 @@ class FileListHandler:
                 self.logger.debug(f"Tagging file {filename} with tag '{tag_name}'")
                 stats.add_tag(tag_name)
 
-    def get_files_with_tag(self, tag_name: str, file_types: list[str] | None = None, only_stable: bool = True) -> list[FileStats]:
+    def get_files_with_tag(
+        self,
+        tag_name: str,
+        file_types: list[str] | None = None,
+        only_stable: bool = True,
+        sort_key_regex: str | None = None,
+    ) -> list[FileStats]:
         """
         Get all files with a specific tag.
 
@@ -211,6 +217,7 @@ class FileListHandler:
             tag_name: The tag name to filter by. Use empty string for untagged files.
             file_types: Optional list of file extensions to further filter by.
             only_stable: If True, only return stable files. Defaults to True.
+            sort_key_regex: Regular expression pattern to sort the files by.
 
         Returns:
             List of FileStats objects matching the criteria.
@@ -222,9 +229,19 @@ class FileListHandler:
 
         if file_types:
             file_list = [
-                stats for stats in file_list
-                if any(stats.path.name.lower().endswith(ext) for ext in file_types)
+                stats for stats in file_list if any(stats.path.name.lower().endswith(ext) for ext in file_types)
             ]
+
+        if sort_key_regex is not None:
+            pattern = re.compile(sort_key_regex)
+
+            def get_sort_key(stats: FileStats) -> str:
+                match = pattern.search(stats.path.name)
+                if match:
+                    return match.group()
+                return ""
+
+            file_list.sort(key=get_sort_key)
 
         return file_list
 
@@ -237,15 +254,20 @@ class FileListHandler:
         """
         return len(self.files)
 
-    def get_untagged_files(self, only_stable: bool = True, file_types: list[str] | None = None) -> list[FileStats]:
+    def get_untagged_files(
+        self, only_stable: bool = True, file_types: list[str] | None = None, sort_key_regex: str | None = None
+    ) -> list[FileStats]:
         """
         Get all untagged files.
 
         Args:
             only_stable: If True, only return stable files. Defaults to True.
             file_types: Optional list of file extensions to further filter by.
+            sort_key_regex: Regular expression pattern to sort the files by.
 
         Returns:
             List of untagged FileStats objects matching the criteria.
         """
-        return self.get_files_with_tag(tag_name="", file_types=file_types, only_stable=only_stable)
+        return self.get_files_with_tag(
+            tag_name="", file_types=file_types, only_stable=only_stable, sort_key_regex=sort_key_regex
+        )

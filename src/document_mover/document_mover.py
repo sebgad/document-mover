@@ -303,15 +303,19 @@ class ScanFileProcessor:
         success_count = 0
 
         # handle files with no tag first -> normal files
-        for file in self.file_list.get_untagged_files():
+        for file in self.file_list.get_untagged_files(sort_key_regex=r"(\d+)"):
             if self.move_file(file):
                 success_count += 1
 
         if self.file_list.is_directory_stable(self.stability_wait_single_dual_side):
             self.logger.info("Source directory is stable for single dual-side files.")
 
-            file_list_single_dual = self.file_list.get_files_with_tag("single-dual-side", file_types=[".pdf"])
-            file_list_dual = self.file_list.get_files_with_tag("dual-side", file_types=[".pdf"])
+            file_list_single_dual = self.file_list.get_files_with_tag(
+                "single-dual-side", file_types=[".pdf"], sort_key_regex=r"(\d+)"
+            )
+            file_list_dual = self.file_list.get_files_with_tag(
+                "dual-side", file_types=[".pdf"], sort_key_regex=r"(\d+)"
+            )
 
             if file_list_single_dual:
                 self.logger.info(
