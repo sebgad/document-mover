@@ -1,6 +1,6 @@
 [project]
 name = "document-mover"
-version = "0.3.6"
+version = "0.3.7"
 description = "document mover, for moving scans stable and merge pdfs"
 authors = [
     {name = "sebgad", email = "sebgad@sebgad.com"},
